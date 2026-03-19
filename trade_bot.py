@@ -57,4 +57,4 @@ print("Bot Render üzerinde başlatılıyor...")
 telegram_mesaj_gonder("🚀 *RENDER SİSTEMİ AKTİF!*")
 while True:
     canli_piyasa_analizi('BTC/USDT', '1h')
-    time.sleep(60)
+    time.sleep(900)
