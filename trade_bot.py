@@ -3,7 +3,25 @@ import pandas as pd
 import pandas_ta as ta
 import requests
 import time
+import threading
+import http.server
+import socketserver
+import os
 from datetime import datetime
+
+# --- RENDER'I KANDIRAN SAHTE WEB SUNUCUSU (PORT AÇICI) ---
+def keep_alive():
+    PORT = int(os.environ.get("PORT", 10000))
+    Handler = http.server.SimpleHTTPRequestHandler
+    try:
+        with socketserver.TCPServer(("", PORT), Handler) as httpd:
+            print(f"Render için sahte port ({PORT}) açıldı. Bot kapanmayacak.")
+            httpd.serve_forever()
+    except Exception as e:
+        print(f"Port açılırken hata oluştu: {e}")
+
+# Sunucuyu arka planda (daemon) başlat
+threading.Thread(target=keep_alive, daemon=True).start()
 
 # --- SENİN TELEGRAM BİLGİLERİN ---
 TOKEN = "8737469275:AAHp9QIRGjHI-kus-yetC2IfzolbRrV1zl4" 
@@ -78,7 +96,7 @@ def canli_piyasa_analizi(sembol='BTC/USDT', zaman_dilimi='1h'):
             acil_mesaj = f"⚠️ *DİKKAT: SERT HAREKET!*\n{sembol} aniden %{abs(fiyat_degisim_yuzdesi):.2f} {yon}!\n\n{ozet}"
             telegram_mesaj_gonder(acil_mesaj)
             son_fiyat = guncel_fiyat # Fiyatı güncelle
-            return # Piyasa çok dalgalı, bu 5 dakikalık döngüde sinyal arama, sadece uyarı ver.
+            return # Piyasa çok dalgalı, bu döngüde sinyal arama, sadece uyarı ver.
 
         # --- 2. SİNYAL KONTROLÜ ---
         long_sarti = (anlik['close'] > anlik['EMA_200']) and (anlik['close'] <= anlik['Destek_20'] * 1.02) and (anlik['RSI_14'] < 45) and (anlik['MACD'] > anlik['MACD_Sinyal']) and (anlik['volume'] > anlik['Hacim_Ortalama'])
@@ -113,7 +131,7 @@ def canli_piyasa_analizi(sembol='BTC/USDT', zaman_dilimi='1h'):
         print(f"Hata: {e}")
 
 print("Bot Render üzerinde başlatılıyor...")
-telegram_mesaj_gonder("🚀 *RENDER SİSTEMİ GÜNCELLENDİ VE AKTİF!*")
+telegram_mesaj_gonder("🚀 *RENDER SİSTEMİ PORT YAMASIYLA AKTİF!*")
 while True:
     canli_piyasa_analizi('BTC/USDT', '1h')
     time.sleep(300)
