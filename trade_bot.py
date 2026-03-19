@@ -29,7 +29,7 @@ threading.Thread(target=keep_alive, daemon=True).start()
 TOKEN = "8737469275:AAHp9QIRGjHI-kus-yetC2IfzolbRrV1zl4" 
 CHAT_ID = "1513813948"
 VOLATILITE_SINIRI = 5.0
-COOLDOWN = 60
+COOLDOWN = 7200
 son_fiyat = None
 son_bekleme_mesaji_zamani = 0
 
@@ -106,4 +106,4 @@ def canli_piyasa_analizi():
 telegram_mesaj_gonder("🚀 *BOT SON GÜNCELLEME İLE AKTİF!* (Hatalar giderildi)")
 while True:
     canli_piyasa_analizi()
-    time.sleep(60)
+    time.sleep(300)
