@@ -134,4 +134,4 @@ print("Bot Render üzerinde başlatılıyor...")
 telegram_mesaj_gonder("🚀 *RENDER SİSTEMİ PORT YAMASIYLA AKTİF!*")
 while True:
     canli_piyasa_analizi('BTC/USDT', '1h')
-    time.sleep(300)
+    time.sleep(30)
