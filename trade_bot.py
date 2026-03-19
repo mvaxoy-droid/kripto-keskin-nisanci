@@ -29,7 +29,7 @@ threading.Thread(target=keep_alive, daemon=True).start()
 TOKEN = "8737469275:AAHp9QIRGjHI-kus-yetC2IfzolbRrV1zl4" 
 CHAT_ID = "1513813948"
 VOLATILITE_SINIRI = 5.0
-COOLDOWN = 7200
+COOLDOWN = 60
 son_fiyat = None
 son_bekleme_mesaji_zamani = 0
 
