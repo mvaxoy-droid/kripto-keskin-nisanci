@@ -9,68 +9,51 @@ import socketserver
 import os
 from datetime import datetime
 
-# --- RENDER'I KANDIRAN VE KENDİNE PİNG ATAN SİSTEM ---
+# --- 1. YARDIMCI SİSTEMLER (ARKA PLANDA ÇALIŞIR) ---
 def keep_alive():
     PORT = int(os.environ.get("PORT", 10000))
-    Handler = http.server.SimpleHTTPRequestHandler
-    
-    # Kendi kendine ping atma fonksiyonu
     def self_ping():
         while True:
             try:
-                # Kendi Render linkine istek atar
+                # Botun kendi linkini uyanık tutar
                 requests.get("https://kripto-keskin-nisanci.onrender.com", timeout=10)
-                print("Kendi kendine ping atıldı, Render uyanık tutuluyor.")
             except:
-                print("Ping atılamadı ama sorun değil.")
-            time.sleep(600) # 10 dakikada bir ping at
+                pass
+            time.sleep(600)
 
     threading.Thread(target=self_ping, daemon=True).start()
+    
+    Handler = http.server.SimpleHTTPRequestHandler
+    with socketserver.TCPServer(("", PORT), Handler) as httpd:
+        httpd.serve_forever()
 
-    try:
-        with socketserver.TCPServer(("", PORT), Handler) as httpd:
-            print(f"Render için sahte port ({PORT}) açıldı.")
-            httpd.serve_forever()
-    except Exception as e:
-        print(f"Port hatası: {e}")
-
+# Yardımcı sistemleri ayrı bir kolda başlat
 threading.Thread(target=keep_alive, daemon=True).start()
 
-# --- SENİN TELEGRAM BİLGİLERİN ---
+# --- 2. AYARLAR VE TELEGRAM ---
 TOKEN = "8737469275:AAHp9QIRGjHI-kus-yetC2IfzolbRrV1zl4" 
 CHAT_ID = "1513813948"
-
-# --- AYARLAR ---
 VOLATILITE_SINIRI_YUZDE = 5.0
-COOLDOWN_SURESI_SANIYE = 7200 # 2 saatte bir rapor atar
+COOLDOWN_SURESI_SANIYE = 7200 # 2 saat
 son_fiyat = None
 son_bekleme_mesaji_zamani = 0
 
 def telegram_mesaj_gonder(mesaj):
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    parametreler = {"chat_id": CHAT_ID, "text": mesaj, "parse_mode": "Markdown"}
     try:
-        requests.get(url, params=parametreler, timeout=10)
-        return True
+        requests.get(url, params={"chat_id": CHAT_ID, "text": mesaj, "parse_mode": "Markdown"}, timeout=10)
     except:
-        return False
+        pass
 
-def piyasa_durum_ozeti(fiyat, rsi, trend, hacim_durumu):
-    return f"""
-📊 *Anlık Durum Özeti*
-💰 *BTC Fiyatı:* {fiyat:.2f} $
-📈 *RSI (14):* {rsi:.1f}
-🌊 *Trend (EMA200):* {trend}
-📊 *Hacim:* {hacim_durumu}
-"""
-
-def canli_piyasa_analizi(sembol='BTC/USDT', zaman_dilimi='1h'):
+# --- 3. ANA ANALİZ MOTORU ---
+def canli_piyasa_analizi():
     global son_fiyat, son_bekleme_mesaji_zamani
-    borsa = ccxt.kucoin({'enableRateLimit': True, 'options': {'defaultType': 'spot'}})
-    
     try:
-        mumlar = borsa.fetch_ohlcv(sembol, timeframe=zaman_dilimi, limit=250)
+        borsa = ccxt.kucoin({'enableRateLimit': True})
+        mumlar = borsa.fetch_ohlcv('BTC/USDT', timeframe='1h', limit=100)
         df = pd.DataFrame(mumlar, columns=['timestamp', 'open', 'high', 'low', 'close', 'volume'])
+        
+        # İndikatörler
         df['RSI_14'] = df.ta.rsi(length=14)
         df['EMA_200'] = df.ta.ema(length=200)
         df['Destek_20'] = df['low'].rolling(window=20).min()
@@ -78,49 +61,51 @@ def canli_piyasa_analizi(sembol='BTC/USDT', zaman_dilimi='1h'):
         macd = df.ta.macd()
         df['MACD'] = macd.iloc[:, 0]
         df['MACD_Sinyal'] = macd.iloc[:, 2]
-        df['Hacim_Ortalama'] = df['volume'].rolling(window=20).mean()
-        df.dropna(inplace=True)
+        df['Hacim_Ort'] = df['volume'].rolling(window=20).mean()
         
         anlik = df.iloc[-1]
-        guncel_fiyat = anlik['close']
-        
-        if son_fiyat is None:
-            son_fiyat = guncel_fiyat
-            return 
-        
-        fiyat_degisim_yuzdesi = ((guncel_fiyat - son_fiyat) / son_fiyat) * 100
-        trend_yonu = "Yükseliş" if guncel_fiyat > anlik['EMA_200'] else "Düşüş"
-        hacim_durumu = "Yeterli ✅" if anlik['volume'] > anlik['Hacim_Ortalama'] else "Düşük ❌"
-        ozet = piyasa_durum_ozeti(guncel_fiyat, anlik['RSI_14'], trend_yonu, hacim_durumu)
+        fiyat = anlik['close']
+        su_an = datetime.now().strftime("%H:%M:%S")
 
-        # Volatilite Mesajı
-        if abs(fiyat_degisim_yuzdesi) >= VOLATILITE_SINIRI_YUZDE:
-            yon = "DÜŞTÜ 📉" if fiyat_degisim_yuzdesi < 0 else "YÜKSELDİ 📈"
-            telegram_mesaj_gonder(f"⚠️ *DİKKAT: SERT HAREKET!*\n{sembol} %{abs(fiyat_degisim_yuzdesi):.2f} {yon}!\n\n{ozet}")
-            son_fiyat = guncel_fiyat
+        if son_fiyat is None:
+            son_fiyat = fiyat
+            print(f"[{su_an}] İlk fiyat alındı: {fiyat}")
             return
 
-        # Sinyal Kontrolü
-        long_sarti = (anlik['close'] > anlik['EMA_200']) and (anlik['close'] <= anlik['Destek_20'] * 1.02) and (anlik['RSI_14'] < 45) and (anlik['MACD'] > anlik['MACD_Sinyal']) and (anlik['volume'] > anlik['Hacim_Ortalama'])
-        short_sarti = (anlik['close'] < anlik['EMA_200']) and (anlik['close'] >= anlik['Direnc_20'] * 0.98) and (anlik['RSI_14'] > 55) and (anlik['MACD'] < anlik['MACD_Sinyal']) and (anlik['volume'] > anlik['Hacim_Ortalama'])
-        
-        if long_sarti:
-            telegram_mesaj_gonder(f"🟢 *ALIM (LONG) SİNYALİ!*\n\n{ozet}")
-        elif short_sarti:
-            telegram_mesaj_gonder(f"🔴 *SATIŞ (SHORT) SİNYALİ!*\n\n{ozet}")
+        # Rapor Metni
+        trend = "Yükseliş" if fiyat > anlik['EMA_200'] else "Düşüş"
+        hacim = "Yeterli ✅" if anlik['volume'] > anlik['Hacim_Ort'] else "Düşük ❌"
+        rapor = f"\n💰 Fiyat: {fiyat:.2f}$\n📈 RSI: {anlik['RSI_14']:.1f}\n🌊 Trend: {trend}\n📊 Hacim: {hacim}"
+
+        # 1. Volatilite Kontrolü
+        degisim = ((fiyat - son_fiyat) / son_fiyat) * 100
+        if abs(degisim) >= VOLATILITE_SINIRI_YUZDE:
+            telegram_mesaj_gonder(f"⚠️ *SERT HAREKET (%{abs(degisim):.2f})*\n{rapor}")
+            son_fiyat = fiyat
+            return
+
+        # 2. Sinyal Kontrolü
+        long = (fiyat > anlik['EMA_200']) and (fiyat <= anlik['Destek_20'] * 1.02) and (anlik['RSI_14'] < 45)
+        short = (fiyat < anlik['EMA_200']) and (fiyat >= anlik['Direnc_20'] * 0.98) and (anlik['RSI_14'] > 55)
+
+        if long:
+            telegram_mesaj_gonder(f"🟢 *LONG SİNYALİ*\n{rapor}")
+        elif short:
+            telegram_mesaj_gonder(f"🔴 *SHORT SİNYALİ*\n{rapor}")
         else:
-            su_anki_zaman = time.time()
-            if (su_anki_zaman - son_bekleme_mesaji_zamani) > COOLDOWN_SURESI_SANIYE:
-                telegram_mesaj_gonder(f"🛑 *DURUM: BEKLEMEDE*\n\n{ozet}")
-                son_bekleme_mesaji_zamani = su_anki_zaman 
-            
-        son_fiyat = guncel_fiyat
+            # Cooldown'a göre bekleme mesajı
+            if (time.time() - son_bekleme_mesaji_zamani) > COOLDOWN_SURESI_SANIYE:
+                telegram_mesaj_gonder(f"🛑 *DURUM: BEKLEMEDE*\n{rapor}")
+                son_bekleme_mesaji_zamani = time.time()
         
+        print(f"[{su_an}] Analiz tamamlandı. Fiyat: {fiyat}")
+        son_fiyat = fiyat
+
     except Exception as e:
         print(f"Hata: {e}")
 
-# Başlat
-telegram_mesaj_gonder("🚀 *BOT TAM GAZ DEVAM EDİYOR!*")
+# --- BOTU BAŞLAT ---
+telegram_mesaj_gonder("🚀 *BOT KESİNTİSİZ MODDA YENİDEN BAŞLATILDI!*")
 while True:
-    canli_piyasa_analizi('BTC/USDT', '1h')
-    time.sleep(300) # 5 dakikada bir tara
+    canli_piyasa_analizi()
+    time.sleep(300) # 5 dakikada bir kontrol
