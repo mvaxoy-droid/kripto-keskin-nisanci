@@ -106,4 +106,4 @@ def canli_piyasa_analizi():
 telegram_mesaj_gonder("🚀 *BOT SON GÜNCELLEME İLE AKTİF!* (Hatalar giderildi)")
 while True:
     canli_piyasa_analizi()
-    time.sleep(300)
+    time.sleep(3600)
